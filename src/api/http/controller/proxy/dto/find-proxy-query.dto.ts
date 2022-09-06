@@ -16,7 +16,7 @@ class SortProxyInputDto {
   @IsString()
   @IsEnum(SortEnum)
   @Transform(({value}) => value.toString().toLowerCase())
-  port?: SortEnum.ASC | SortEnum.DESC;
+  listenPort?: SortEnum.ASC | SortEnum.DESC;
 }
 
 class FilterProxyInputDto {
@@ -28,7 +28,7 @@ class FilterProxyInputDto {
   })
   @IsOptional()
   @IsNumber()
-  port?: string;
+  listenPort?: string;
 }
 
 export class FindProxyQueryDto extends PartialType(FilterInputDto) {
@@ -41,10 +41,10 @@ export class FindProxyQueryDto extends PartialType(FilterInputDto) {
         description: 'Default not use sort',
         value: {},
       },
-      'sort with port': {
-        description: 'Sort by port with DESC format',
+      'sort with listenPort': {
+        description: 'Sort by listenPort with DESC format',
         value: {
-          port: SortEnum.DESC,
+          listenPort: SortEnum.DESC,
         },
       },
     },
@@ -60,9 +60,9 @@ export class FindProxyQueryDto extends PartialType(FilterInputDto) {
         description: 'Search without any filters',
         value: {},
       },
-      'search with port': {
+      'search with listenPort': {
         value: {
-          port: 3128,
+          listenPort: 3128,
         },
       },
     },

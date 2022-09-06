@@ -27,6 +27,7 @@
     "@nestjs/platform-express": "^8.0.0",
     "@nestjs/swagger": "^5.2.1",
     "reflect-metadata": "^0.1.13",
+    "moment-timezone": "^0.5.34",
     "rimraf": "^3.0.2",
     "rxjs": "^7.2.0",
     "class-transformer": "^0.5.1",
@@ -71,7 +72,8 @@
       "@src-api/(.*)": "<rootDir>/api/$1",
       "@src-core/(.*)": "<rootDir>/core/$1",
       "@src-infrastructure/(.*)": "<rootDir>/infrastructure/$1",
-      "@src-loader/(.*)": "<rootDir>/loader/$1"
+      "@src-loader/(.*)": "<rootDir>/loader/$1",
+      "@src-utility-type": "<rootDir>/utility.d.ts"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

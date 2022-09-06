@@ -1,6 +1,6 @@
-import {IsDefined, IsIP, IsNumber, IsOptional} from 'class-validator';
+import {IsNumber, IsOptional} from 'class-validator';
 import {ApiProperty} from '@nestjs/swagger';
-import {ProxyDownstreamModel, ProxyTypeEnum, ProxyUpstreamModel} from '@src-core/model/proxy.model';
+import {ProxyDownstreamModel, ProxyStatusEnum, ProxyTypeEnum, ProxyUpstreamModel} from '@src-core/model/proxy.model';
 import {defaultModelFactory} from '@src-core/model/defaultModel';
 
 export class CreateProxyInterfaceInputDto {
@@ -18,13 +18,24 @@ export class CreateProxyInterfaceInputDto {
   static toModel(interfaceId: string, dto: CreateProxyInterfaceInputDto): ProxyUpstreamModel {
     const proxyDownstreamModel = defaultModelFactory<ProxyDownstreamModel>(
       ProxyDownstreamModel,
-      {refId: interfaceId, mask: 32, type: ProxyTypeEnum.INTERFACE},
+      {
+        id: 'default',
+        refId: interfaceId,
+        ip: 'default',
+        mask: 32,
+        type: ProxyTypeEnum.INTERFACE,
+        status: ProxyStatusEnum.DISABLE,
+      },
       ['id', 'ip', 'status'],
     );
 
     return defaultModelFactory<ProxyUpstreamModel>(
       ProxyUpstreamModel,
-      {proxyDownstream: [proxyDownstreamModel], ...(dto.port && {listenPort: dto.port})},
+      {
+        id: 'default',
+        listenIp: 'default',
+        proxyDownstream: [proxyDownstreamModel], ...(dto.port && {listenPort: dto.port}),
+      },
       ['id', 'listenIp'],
     );
   }

@@ -10,14 +10,19 @@ import {SystemInfoRepository} from './system-info.repository';
 jest.mock('os');
 import {NetworkInterfaceInfo, networkInterfaces} from 'os';
 import {DefaultModel} from '@src-core/model/defaultModel';
+import {UnknownException} from '@src-core/exception/unknown.exception';
 
 describe('SystemInfoRepository', () => {
   let repository: SystemInfoRepository;
   let identifierMock: MockProxy<IIdentifier>;
+  let fakeIdentifierMock: MockProxy<IIdentifier>;
 
   beforeEach(async () => {
     identifierMock = mock<IIdentifier>();
     identifierMock.generateId.mockReturnValue('00000000-0000-0000-0000-000000000000');
+
+    fakeIdentifierMock = mock<IIdentifier>();
+    fakeIdentifierMock.generateId.mockReturnValue('11111111-1111-1111-1111-111111111111');
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -351,6 +356,85 @@ describe('SystemInfoRepository', () => {
       }));
       expect((<DefaultModel<IpInterfaceModel>><unknown>result[1]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
       expect(count).toEqual(2);
+    });
+  });
+
+  describe(`Get network interface by id`, () => {
+    let inputId: string;
+    let repositoryGetAllStub: jest.SpyInstance;
+    let outputIpModelDataMatch1: IpInterfaceModel;
+    let outputIpModelDataNotMatch2: IpInterfaceModel;
+
+    beforeEach(() => {
+      inputId = identifierMock.generateId();
+
+      repositoryGetAllStub = jest.spyOn(repository, 'getAllNetworkInterface');
+
+      outputIpModelDataMatch1 = new IpInterfaceModel({
+        id: identifierMock.generateId(),
+        name: 'eno1',
+        ip: '192.168.1.1',
+        isUse: false,
+      });
+
+      outputIpModelDataNotMatch2 = new IpInterfaceModel({
+        id: fakeIdentifierMock.generateId(),
+        name: 'eno2',
+        ip: '192.168.100.1',
+        isUse: false,
+      });
+    });
+
+    afterEach(() => {
+      repositoryGetAllStub.mockClear();
+    });
+
+    it(`Should error get network interface with id`, async () => {
+      repositoryGetAllStub.mockResolvedValue([new UnknownException()]);
+
+      const [error] = await repository.getNetworkInterfaceById(inputId);
+
+      expect(repositoryGetAllStub).toHaveBeenCalled();
+      expect(repositoryGetAllStub).toHaveBeenCalledWith(new FilterModel<IpInterfaceModel>({skipPagination: true}));
+      expect(error).toBeInstanceOf(UnknownException);
+    });
+
+    it(`Should successfully get network interface with id and return null if not found any data`, async () => {
+      repositoryGetAllStub.mockResolvedValue([null, [], 0]);
+
+      const [error, result] = await repository.getNetworkInterfaceById(inputId);
+
+      expect(repositoryGetAllStub).toHaveBeenCalled();
+      expect(repositoryGetAllStub).toHaveBeenCalledWith(new FilterModel<IpInterfaceModel>({skipPagination: true}));
+      expect(error).toBeNull();
+      expect(result).toBeNull();
+    });
+
+    it(`Should successfully get network interface with id and return null if not match id`, async () => {
+      repositoryGetAllStub.mockResolvedValue([null, [outputIpModelDataNotMatch2], 1]);
+
+      const [error, result] = await repository.getNetworkInterfaceById(inputId);
+
+      expect(repositoryGetAllStub).toHaveBeenCalled();
+      expect(repositoryGetAllStub).toHaveBeenCalledWith(new FilterModel<IpInterfaceModel>({skipPagination: true}));
+      expect(error).toBeNull();
+      expect(result).toBeNull();
+    });
+
+    it(`Should successfully get network interface with id`, async () => {
+      repositoryGetAllStub.mockResolvedValue([null, [outputIpModelDataNotMatch2, outputIpModelDataMatch1], 2]);
+
+      const [error, result] = await repository.getNetworkInterfaceById(inputId);
+
+      expect(repositoryGetAllStub).toHaveBeenCalled();
+      expect(repositoryGetAllStub).toHaveBeenCalledWith(new FilterModel<IpInterfaceModel>({skipPagination: true}));
+      expect(error).toBeNull();
+      expect(result).toMatchObject<Omit<IpInterfaceModel, 'clone'>>({
+        id: outputIpModelDataMatch1.id,
+        name: outputIpModelDataMatch1.name,
+        ip: outputIpModelDataMatch1.ip,
+        isUse: outputIpModelDataMatch1.isUse,
+      });
     });
   });
 });

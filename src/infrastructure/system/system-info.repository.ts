@@ -43,8 +43,22 @@ export class SystemInfoRepository implements ISystemInfoRepositoryInterface {
     }
   }
 
-  async getAllNetworkInterfaceById(id: string): Promise<AsyncReturn<Error, IpInterfaceModel>> {
-    return Promise.resolve(undefined);
+  async getNetworkInterfaceById(id: string): Promise<AsyncReturn<Error, IpInterfaceModel | null>> {
+    const skipPaginationFilter = new FilterModel<IpInterfaceModel>({skipPagination: true});
+    const [ipError, ipList, ipTotalCount] = await this.getAllNetworkInterface(skipPaginationFilter);
+    if (ipError) {
+      return [ipError];
+    }
+    if (ipTotalCount === 0) {
+      return [null, null];
+    }
+
+    const find = ipList.find((v) => v.id === id);
+    if (!find) {
+      return [null, null];
+    }
+
+    return [null, find];
   }
 
   private _fillIpInterfaceModel(entity) {

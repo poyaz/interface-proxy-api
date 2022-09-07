@@ -51,7 +51,7 @@ describe('SystemInfoRepository', () => {
   });
 
   describe(`Get all network interface`, () => {
-    let inputIdentityFilterModel: FilterModel<IpInterfaceModel>;
+    let inputFilterModel: FilterModel<IpInterfaceModel>;
     let inputFilterPaginationModel: FilterModel<IpInterfaceModel>;
     let inputFilterSortAndPaginationModel: FilterModel<IpInterfaceModel>;
     let inputFilterSkipPaginationModel: FilterModel<IpInterfaceModel>;
@@ -62,8 +62,8 @@ describe('SystemInfoRepository', () => {
     let outputNetworkRealData5: NodeJS.Dict<NetworkInterfaceInfo[]>;
 
     beforeEach(() => {
-      inputIdentityFilterModel = new FilterModel<IpInterfaceModel>();
-      inputIdentityFilterModel.addCondition({$opr: 'eq', name: 'eno1'});
+      inputFilterModel = new FilterModel<IpInterfaceModel>();
+      inputFilterModel.addCondition({$opr: 'eq', name: 'eno1'});
 
       inputFilterPaginationModel = new FilterModel<IpInterfaceModel>({page: 2, limit: 1});
 
@@ -249,7 +249,7 @@ describe('SystemInfoRepository', () => {
         ...outputNetworkRealData5,
       });
 
-      const [error, result, count] = await repository.getAllNetworkInterface(inputIdentityFilterModel);
+      const [error, result, count] = await repository.getAllNetworkInterface(inputFilterModel);
 
       expect(networkInterfaces).toHaveBeenCalled();
       expect(error).toBeNull();

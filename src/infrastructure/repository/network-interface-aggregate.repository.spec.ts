@@ -9,6 +9,9 @@ import {IpInterfaceModel} from '@src-core/model/ip-interface.model';
 import {UnknownException} from '@src-core/exception/unknown.exception';
 import {IIdentifier} from '@src-core/interface/i-identifier.interface';
 import {DefaultModel, defaultModelFactory, defaultModelType} from '@src-core/model/defaultModel';
+import {filterAndSortIpInterface} from '@src-infrastructure/utility/filterAndSortIpInterface';
+
+jest.mock('@src-infrastructure/utility/filterAndSortIpInterface');
 
 describe('NetworkInterfaceAggregateRepository', () => {
   let repository: NetworkInterfaceAggregateRepository;
@@ -57,29 +60,15 @@ describe('NetworkInterfaceAggregateRepository', () => {
   });
 
   describe(`Get all network ip address`, () => {
-    let inputIpFilterModel: FilterModel<IpInterfaceModel>;
-    let inputIsUseFilterModel: FilterModel<IpInterfaceModel>;
-    let inputFilterPaginationModel: FilterModel<IpInterfaceModel>;
-    let inputFilterSortAndPaginationModel: FilterModel<IpInterfaceModel>;
-    let inputFilterSkipPaginationModel: FilterModel<IpInterfaceModel>;
+    let inputFilterModel: FilterModel<IpInterfaceModel>;
     let outputNetworkIpData1: defaultModelType<IpInterfaceModel>;
     let outputNetworkIpData2: defaultModelType<IpInterfaceModel>;
     let outputSquidIpData3: IpInterfaceModel;
     let outputSquidIpNotMatchData4: IpInterfaceModel;
 
     beforeEach(() => {
-      inputIpFilterModel = new FilterModel<IpInterfaceModel>();
-      inputIpFilterModel.addCondition({$opr: 'eq', ip: '192.168.1.1'});
-
-      inputIsUseFilterModel = new FilterModel<IpInterfaceModel>();
-      inputIsUseFilterModel.addCondition({$opr: 'eq', isUse: true});
-
-      inputFilterPaginationModel = new FilterModel<IpInterfaceModel>({page: 2, limit: 1});
-
-      inputFilterSortAndPaginationModel = new FilterModel<IpInterfaceModel>({page: 2, limit: 1});
-      inputFilterSortAndPaginationModel.addSortBy({ip: SortEnum.DESC});
-
-      inputFilterSkipPaginationModel = new FilterModel<IpInterfaceModel>({skipPagination: true});
+      inputFilterModel = new FilterModel<IpInterfaceModel>();
+      inputFilterModel.addCondition({$opr: 'eq', ip: '192.168.1.1'});
 
       outputNetworkIpData1 = defaultModelFactory(
         IpInterfaceModel,
@@ -165,6 +154,7 @@ describe('NetworkInterfaceAggregateRepository', () => {
     it(`Should successfully all network ip address (without filter) and return records with "isUse" false because not found any ip on squid`, async () => {
       systemInfoRepository.getAllNetworkInterface.mockResolvedValue([null, [outputNetworkIpData1, outputNetworkIpData2], 2]);
       squidNetworkInterfaceRepository.getAll.mockResolvedValue([null, [], 0]);
+      (<jest.Mock>filterAndSortIpInterface).mockReturnValue([[outputNetworkIpData1, outputNetworkIpData2], 2]);
 
       const [error, result, count] = await repository.getAll();
 
@@ -195,6 +185,7 @@ describe('NetworkInterfaceAggregateRepository', () => {
     it(`Should successfully all network ip address (without filter) and return records with "isUse" true if found ip on squid`, async () => {
       systemInfoRepository.getAllNetworkInterface.mockResolvedValue([null, [outputNetworkIpData1, outputNetworkIpData2], 2]);
       squidNetworkInterfaceRepository.getAll.mockResolvedValue([null, [outputSquidIpData3, outputSquidIpNotMatchData4], 2]);
+      (<jest.Mock>filterAndSortIpInterface).mockReturnValue([[outputNetworkIpData1, outputNetworkIpData2], 2]);
 
       const [error, result, count] = await repository.getAll();
 
@@ -222,117 +213,19 @@ describe('NetworkInterfaceAggregateRepository', () => {
       expect(count).toEqual(2);
     });
 
-    it(`Should successfully all network ip address (with ip filter) and return records`, async () => {
+    it(`Should successfully all network ip address (with filter) and return records`, async () => {
       systemInfoRepository.getAllNetworkInterface.mockResolvedValue([null, [outputNetworkIpData1, outputNetworkIpData2], 2]);
       squidNetworkInterfaceRepository.getAll.mockResolvedValue([null, [outputSquidIpData3, outputSquidIpNotMatchData4], 2]);
+      (<jest.Mock>filterAndSortIpInterface).mockReturnValue([[outputNetworkIpData1, outputNetworkIpData2], 2]);
 
-      const [error, result, count] = await repository.getAll(inputIpFilterModel);
+      const [error, result, count] = await repository.getAll(inputFilterModel);
 
       expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalled();
       expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>systemInfoRepository.getAllNetworkInterface.mock.calls[0][0]).getCondition('ip')).toMatchObject(inputIpFilterModel.getCondition('ip'));
+      expect((<FilterModel<IpInterfaceModel>>systemInfoRepository.getAllNetworkInterface.mock.calls[0][0]).getCondition('ip')).toMatchObject(inputFilterModel.getCondition('ip'));
       expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalled();
       expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>squidNetworkInterfaceRepository.getAll.mock.calls[0][0]).getCondition('ip')).toMatchObject(inputIpFilterModel.getCondition('ip'));
-      expect(error).toBeNull();
-      expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone'>>({
-        id: outputNetworkIpData1.id,
-        name: outputNetworkIpData1.name,
-        ip: outputNetworkIpData1.ip,
-        isUse: true,
-      });
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties().length).toEqual(0);
-      expect(result[1]).toMatchObject<Omit<IpInterfaceModel, 'clone'>>({
-        id: outputNetworkIpData2.id,
-        name: outputNetworkIpData2.name,
-        ip: outputNetworkIpData2.ip,
-        isUse: false,
-      });
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[1]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
-      expect(count).toEqual(2);
-    });
-
-    it(`Should successfully all network ip address (with isUse filter) and return records`, async () => {
-      systemInfoRepository.getAllNetworkInterface.mockResolvedValue([null, [outputNetworkIpData1, outputNetworkIpData2], 2]);
-      squidNetworkInterfaceRepository.getAll.mockResolvedValue([null, [outputSquidIpData3, outputSquidIpNotMatchData4], 2]);
-
-      const [error, result, count] = await repository.getAll(inputIsUseFilterModel);
-
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalled();
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>systemInfoRepository.getAllNetworkInterface.mock.calls[0][0]).getConditionList().length).toEqual(0);
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalled();
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>squidNetworkInterfaceRepository.getAll.mock.calls[0][0]).getConditionList().length).toEqual(0);
-      expect(error).toBeNull();
-      expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone'>>({
-        id: outputNetworkIpData1.id,
-        name: outputNetworkIpData1.name,
-        ip: outputNetworkIpData1.ip,
-        isUse: true,
-      });
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties().length).toEqual(0);
-      expect(count).toEqual(1);
-    });
-
-    it(`Should successfully all network ip address (with pagination) and return records`, async () => {
-      systemInfoRepository.getAllNetworkInterface.mockResolvedValue([null, [outputNetworkIpData1, outputNetworkIpData2], 2]);
-      squidNetworkInterfaceRepository.getAll.mockResolvedValue([null, [outputSquidIpData3, outputSquidIpNotMatchData4], 2]);
-
-      const [error, result, count] = await repository.getAll(inputFilterPaginationModel);
-
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalled();
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>systemInfoRepository.getAllNetworkInterface.mock.calls[0][0]).getConditionList().length).toEqual(0);
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalled();
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>squidNetworkInterfaceRepository.getAll.mock.calls[0][0]).getConditionList().length).toEqual(0);
-      expect(error).toBeNull();
-      expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone'>>({
-        id: outputNetworkIpData2.id,
-        name: outputNetworkIpData2.name,
-        ip: outputNetworkIpData2.ip,
-        isUse: false,
-      });
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
-      expect(count).toEqual(2);
-    });
-
-    it(`Should successfully all network ip address (with sort and pagination) and return records`, async () => {
-      systemInfoRepository.getAllNetworkInterface.mockResolvedValue([null, [outputNetworkIpData1, outputNetworkIpData2], 2]);
-      squidNetworkInterfaceRepository.getAll.mockResolvedValue([null, [outputSquidIpData3, outputSquidIpNotMatchData4], 2]);
-
-      const [error, result, count] = await repository.getAll(inputFilterSortAndPaginationModel);
-
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalled();
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>systemInfoRepository.getAllNetworkInterface.mock.calls[0][0]).getConditionList().length).toEqual(0);
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalled();
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>squidNetworkInterfaceRepository.getAll.mock.calls[0][0]).getConditionList().length).toEqual(0);
-      expect(error).toBeNull();
-      expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone'>>({
-        id: outputNetworkIpData1.id,
-        name: outputNetworkIpData1.name,
-        ip: outputNetworkIpData1.ip,
-        isUse: true,
-      });
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties().length).toEqual(0);
-      expect(count).toEqual(2);
-    });
-
-    it(`Should successfully all network ip address (with skip pagination) and return records`, async () => {
-      systemInfoRepository.getAllNetworkInterface.mockResolvedValue([null, [outputNetworkIpData1, outputNetworkIpData2], 2]);
-      squidNetworkInterfaceRepository.getAll.mockResolvedValue([null, [outputSquidIpData3, outputSquidIpNotMatchData4], 2]);
-
-      const [error, result, count] = await repository.getAll(inputFilterSkipPaginationModel);
-
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalled();
-      expect(systemInfoRepository.getAllNetworkInterface).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>systemInfoRepository.getAllNetworkInterface.mock.calls[0][0]).getConditionList().length).toEqual(0);
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalled();
-      expect(squidNetworkInterfaceRepository.getAll).toHaveBeenCalledWith(expect.objectContaining({skipPagination: true}));
-      expect((<FilterModel<IpInterfaceModel>>squidNetworkInterfaceRepository.getAll.mock.calls[0][0]).getConditionList().length).toEqual(0);
+      expect((<FilterModel<IpInterfaceModel>>squidNetworkInterfaceRepository.getAll.mock.calls[0][0]).getCondition('ip')).toMatchObject(inputFilterModel.getCondition('ip'));
       expect(error).toBeNull();
       expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone'>>({
         id: outputNetworkIpData1.id,

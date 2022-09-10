@@ -6,11 +6,13 @@ import {RepositoryException} from '@src-core/exception/repository.exception';
 import {FilterModel, SortEnum} from '@src-core/model/filter.model';
 import {IpInterfaceModel} from '@src-core/model/ip-interface.model';
 import {SystemInfoRepository} from './system-info.repository';
+import {NetworkInterfaceInfo, networkInterfaces} from 'os';
+import {DefaultModel, defaultModelFactory, defaultModelType} from '@src-core/model/defaultModel';
+import {UnknownException} from '@src-core/exception/unknown.exception';
+import {filterAndSortIpInterface} from '@src-infrastructure/utility/filterAndSortIpInterface';
 
 jest.mock('os');
-import {NetworkInterfaceInfo, networkInterfaces} from 'os';
-import {DefaultModel} from '@src-core/model/defaultModel';
-import {UnknownException} from '@src-core/exception/unknown.exception';
+jest.mock('@src-infrastructure/utility/filterAndSortIpInterface');
 
 describe('SystemInfoRepository', () => {
   let repository: SystemInfoRepository;
@@ -52,25 +54,18 @@ describe('SystemInfoRepository', () => {
 
   describe(`Get all network interface`, () => {
     let inputFilterModel: FilterModel<IpInterfaceModel>;
-    let inputFilterPaginationModel: FilterModel<IpInterfaceModel>;
-    let inputFilterSortAndPaginationModel: FilterModel<IpInterfaceModel>;
-    let inputFilterSkipPaginationModel: FilterModel<IpInterfaceModel>;
     let outputNetworkLoData1: NodeJS.Dict<NetworkInterfaceInfo[]>;
     let outputNetworkDockerData2: NodeJS.Dict<NetworkInterfaceInfo[]>;
     let outputNetworkBridgeData3: NodeJS.Dict<NetworkInterfaceInfo[]>;
     let outputNetworkRealData4: NodeJS.Dict<NetworkInterfaceInfo[]>;
     let outputNetworkRealData5: NodeJS.Dict<NetworkInterfaceInfo[]>;
 
+    let outputNetworkIpData1: defaultModelType<IpInterfaceModel>;
+    let outputNetworkIpData2: defaultModelType<IpInterfaceModel>;
+
     beforeEach(() => {
       inputFilterModel = new FilterModel<IpInterfaceModel>();
       inputFilterModel.addCondition({$opr: 'eq', name: 'eno1'});
-
-      inputFilterPaginationModel = new FilterModel<IpInterfaceModel>({page: 2, limit: 1});
-
-      inputFilterSortAndPaginationModel = new FilterModel<IpInterfaceModel>({page: 2, limit: 1});
-      inputFilterSortAndPaginationModel.addSortBy({ip: SortEnum.DESC});
-
-      inputFilterSkipPaginationModel = new FilterModel<IpInterfaceModel>({skipPagination: true});
 
       outputNetworkLoData1 = {
         lo: [
@@ -177,6 +172,27 @@ describe('SystemInfoRepository', () => {
           },
         ],
       };
+
+      outputNetworkIpData1 = defaultModelFactory(
+        IpInterfaceModel,
+        {
+          id: identifierMock.generateId(),
+          name: 'eno1',
+          ip: '192.168.1.1',
+          isUse: false,
+        },
+        ['isUse'],
+      );
+      outputNetworkIpData2 = defaultModelFactory(
+        IpInterfaceModel,
+        {
+          id: identifierMock.generateId(),
+          name: 'eno2',
+          ip: '192.168.100.1',
+          isUse: false,
+        },
+        ['isUse'],
+      );
     });
 
     it(`Should error get all network interface`, async () => {
@@ -211,6 +227,7 @@ describe('SystemInfoRepository', () => {
         ...outputNetworkRealData4,
         ...outputNetworkRealData5,
       });
+      (<jest.Mock>filterAndSortIpInterface).mockReturnValue([[outputNetworkIpData1, outputNetworkIpData2], 2]);
 
       const [error, result, count] = await repository.getAllNetworkInterface();
 
@@ -248,6 +265,7 @@ describe('SystemInfoRepository', () => {
         ...outputNetworkRealData4,
         ...outputNetworkRealData5,
       });
+      (<jest.Mock>filterAndSortIpInterface).mockReturnValue([[outputNetworkIpData1], 1]);
 
       const [error, result, count] = await repository.getAllNetworkInterface(inputFilterModel);
 
@@ -265,97 +283,6 @@ describe('SystemInfoRepository', () => {
       }));
       expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
       expect(count).toEqual(1);
-    });
-
-    it(`Should successfully get all network interface (with pagination) and return records`, async () => {
-      (<jest.Mock>networkInterfaces).mockReturnValue({
-        ...outputNetworkLoData1,
-        ...outputNetworkDockerData2,
-        ...outputNetworkBridgeData3,
-        ...outputNetworkRealData4,
-        ...outputNetworkRealData5,
-      });
-
-      const [error, result, count] = await repository.getAllNetworkInterface(inputFilterPaginationModel);
-
-      expect(networkInterfaces).toHaveBeenCalled();
-      expect(error).toBeNull();
-      expect(result.length).toEqual(1);
-      expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone' | 'isUse'>>({
-        id: identifierMock.generateId(),
-        name: Object.keys(outputNetworkRealData5)[0],
-        ip: outputNetworkRealData5[Object.keys(outputNetworkRealData5)[0]][0].cidr.split('/')[0],
-      });
-      expect(result[0]).toEqual(expect.objectContaining({
-        isDefaultProperty: expect.anything(),
-        getDefaultProperties: expect.anything(),
-      }));
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
-      expect(count).toEqual(2);
-    });
-
-    it(`Should successfully get all network interface (with sort and pagination) and return records`, async () => {
-      (<jest.Mock>networkInterfaces).mockReturnValue({
-        ...outputNetworkLoData1,
-        ...outputNetworkDockerData2,
-        ...outputNetworkBridgeData3,
-        ...outputNetworkRealData4,
-        ...outputNetworkRealData5,
-      });
-
-      const [error, result, count] = await repository.getAllNetworkInterface(inputFilterSortAndPaginationModel);
-
-      expect(networkInterfaces).toHaveBeenCalled();
-      expect(error).toBeNull();
-      expect(result.length).toEqual(1);
-      expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone' | 'isUse'>>({
-        id: identifierMock.generateId(),
-        name: Object.keys(outputNetworkRealData4)[0],
-        ip: outputNetworkRealData4[Object.keys(outputNetworkRealData4)[0]][0].cidr.split('/')[0],
-      });
-      expect(result[0]).toEqual(expect.objectContaining({
-        isDefaultProperty: expect.anything(),
-        getDefaultProperties: expect.anything(),
-      }));
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
-      expect(count).toEqual(2);
-    });
-
-    it(`Should successfully get all network interface (with skip pagination) and return records`, async () => {
-      (<jest.Mock>networkInterfaces).mockReturnValue({
-        ...outputNetworkLoData1,
-        ...outputNetworkDockerData2,
-        ...outputNetworkBridgeData3,
-        ...outputNetworkRealData4,
-        ...outputNetworkRealData5,
-      });
-
-      const [error, result, count] = await repository.getAllNetworkInterface(inputFilterSkipPaginationModel);
-
-      expect(networkInterfaces).toHaveBeenCalled();
-      expect(error).toBeNull();
-      expect(result.length).toEqual(2);
-      expect(result[0]).toMatchObject<Omit<IpInterfaceModel, 'clone' | 'isUse'>>({
-        id: identifierMock.generateId(),
-        name: Object.keys(outputNetworkRealData4)[0],
-        ip: outputNetworkRealData4[Object.keys(outputNetworkRealData4)[0]][0].cidr.split('/')[0],
-      });
-      expect(result[0]).toEqual(expect.objectContaining({
-        isDefaultProperty: expect.anything(),
-        getDefaultProperties: expect.anything(),
-      }));
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[0]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
-      expect(result[1]).toMatchObject<Omit<IpInterfaceModel, 'clone' | 'isUse'>>({
-        id: identifierMock.generateId(),
-        name: Object.keys(outputNetworkRealData5)[0],
-        ip: outputNetworkRealData5[Object.keys(outputNetworkRealData5)[0]][0].cidr.split('/')[0],
-      });
-      expect(result[1]).toEqual(expect.objectContaining({
-        isDefaultProperty: expect.anything(),
-        getDefaultProperties: expect.anything(),
-      }));
-      expect((<DefaultModel<IpInterfaceModel>><unknown>result[1]).getDefaultProperties()).toEqual(expect.arrayContaining<keyof IpInterfaceModel>(['isUse']));
-      expect(count).toEqual(2);
     });
   });
 

@@ -6,7 +6,8 @@ import {spawn} from 'child_process';
 import {resolve} from 'path';
 import {RepositoryException} from '@src-core/exception/repository.exception';
 import {defaultModelFactory} from '@src-core/model/defaultModel';
-import {sortListObject} from '@src-infrastructure/utility';
+import {sortListObject} from '@src-infrastructure/utility/utility';
+import {filterAndSortIpInterface} from '@src-infrastructure/utility/filterAndSortIpInterface';
 
 export class SquidNetworkInterfaceRepository implements INetworkInterfaceRepositoryInterface {
   private readonly _configPath: string;
@@ -55,7 +56,11 @@ export class SquidNetworkInterfaceRepository implements INetworkInterfaceReposit
         .filter((v) => v !== '')
         .map((v) => SquidNetworkInterfaceRepository._fillModel(v));
 
-      return [null, ...SquidNetworkInterfaceRepository._paginationAndFilterData(allIpList, filterModel)];
+      if (allIpList.length === 0) {
+        return [null, [], 0];
+      }
+
+      return [null, ...filterAndSortIpInterface(allIpList, filterModel)];
     } catch (error) {
       return [new RepositoryException(error)];
     }
@@ -70,33 +75,5 @@ export class SquidNetworkInterfaceRepository implements INetworkInterfaceReposit
     });
 
     return defaultModelFactory(IpInterfaceModel, model, ['id', 'name', 'isUse']);
-  }
-
-  private static _paginationAndFilterData(ipList: Array<IpInterfaceModel>, filterModel: FilterModel<IpInterfaceModel>): [Array<IpInterfaceModel>, number] {
-    let dataList = ipList;
-
-    if (filterModel.getLengthOfCondition() > 0) {
-      const getIpFilter = filterModel.getCondition('ip');
-      if (getIpFilter) {
-        dataList = dataList.filter((v) => v.ip === getIpFilter.ip);
-      }
-    }
-
-    if (filterModel.getLengthOfSortBy() > 0) {
-      const getIpSort = filterModel.getSortBy('ip');
-      if (getIpSort) {
-        dataList = sortListObject<IpInterfaceModel>(dataList, getIpSort, 'ip');
-      }
-    }
-
-    if (!filterModel.skipPagination) {
-      const pageNumber = filterModel.page;
-      const pageSize = filterModel.limit;
-      const resultPagination = dataList.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
-
-      return [resultPagination, dataList.length];
-    }
-
-    return [dataList, dataList.length];
   }
 }

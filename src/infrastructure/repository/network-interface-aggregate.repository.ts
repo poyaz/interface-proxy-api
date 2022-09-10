@@ -3,7 +3,7 @@ import {FilterModel} from '@src-core/model/filter.model';
 import {IpInterfaceModel} from '@src-core/model/ip-interface.model';
 import {AsyncReturn} from '@src-utility-type';
 import {ISystemInfoRepositoryInterface} from '@src-core/interface/i-system-info-repository.interface';
-import {sortListObject} from '@src-infrastructure/utility';
+import {filterAndSortIpInterface} from '@src-infrastructure/utility/filterAndSortIpInterface';
 
 export class NetworkInterfaceAggregateRepository implements INetworkInterfaceRepositoryInterface {
   constructor(
@@ -32,7 +32,7 @@ export class NetworkInterfaceAggregateRepository implements INetworkInterfaceRep
 
     const [
       [networkIpError, networkIpList, networkIpTotalCount],
-      [squidIpError, squidIpList, squidIpTotalCount],
+      [squidIpError, squidIpList],
     ] = await Promise.all([
       this._systemInfoRepository.getAllNetworkInterface(networkIpFilter),
       this._networkInterfaceRepository.getAll(squidIpFilter),
@@ -49,7 +49,7 @@ export class NetworkInterfaceAggregateRepository implements INetworkInterfaceRep
 
     const ipList = networkIpList.map((v) => NetworkInterfaceAggregateRepository._joinData(v, squidIpList));
 
-    return [null, ...NetworkInterfaceAggregateRepository._paginationAndFilterData(ipList, filterModel)];
+    return [null, ...filterAndSortIpInterface(ipList, filterModel)];
   }
 
   private static _joinData(networkIp: IpInterfaceModel, squidIpList: Array<IpInterfaceModel>): IpInterfaceModel | null {
@@ -62,38 +62,5 @@ export class NetworkInterfaceAggregateRepository implements INetworkInterfaceRep
     data.isUse = true;
 
     return data;
-  }
-
-  private static _paginationAndFilterData(ipList: Array<IpInterfaceModel>, filterModel: FilterModel<IpInterfaceModel>): [Array<IpInterfaceModel>, number] {
-    let dataList = ipList;
-
-    if (filterModel.getLengthOfCondition() > 0) {
-      const getIsUseFilter = filterModel.getCondition('isUse');
-      if (getIsUseFilter) {
-        dataList = dataList.filter((v) => v.isUse === getIsUseFilter.isUse);
-      }
-    }
-
-    if (filterModel.getLengthOfSortBy() > 0) {
-      const getNameSort = filterModel.getSortBy('name');
-      if (getNameSort) {
-        dataList = sortListObject<IpInterfaceModel>(dataList, getNameSort, 'name');
-      }
-
-      const getIpSort = filterModel.getSortBy('ip');
-      if (getIpSort) {
-        dataList = sortListObject<IpInterfaceModel>(dataList, getIpSort, 'ip');
-      }
-    }
-
-    if (!filterModel.skipPagination) {
-      const pageNumber = filterModel.page;
-      const pageSize = filterModel.limit;
-      const resultPagination = dataList.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
-
-      return [resultPagination, dataList.length];
-    }
-
-    return [dataList, dataList.length];
   }
 }

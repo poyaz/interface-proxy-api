@@ -40,7 +40,7 @@ export class ProxyUpstreamModel {
     Object.assign(this, props);
   }
 
-  clone() {
+  clone(): ProxyUpstreamModel {
     return Object.assign(Object.create(this), this);
   }
 }

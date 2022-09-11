@@ -1,8 +1,9 @@
-import {getFiles, sortListObject} from '@src-infrastructure/utility/utility';
+import {checkFileExist, getFiles, sortListObject} from '@src-infrastructure/utility/utility';
 import {SortEnum} from '@src-core/model/filter.model';
 import * as path from 'path';
 import {Dirent} from 'fs';
 import * as fsAsync from 'fs/promises';
+import * as fs from 'fs';
 
 jest.mock('fs/promises');
 
@@ -128,6 +129,66 @@ describe('utility', () => {
         path.resolve(dirPath, dirListFirstLevel1.name, dirListFirstLevel1FileFile2.name),
         path.resolve(dirPath, dirListFirstLevel2.name, dirListFirstLevel2File1.name),
       ]));
+    });
+  });
+
+  describe(`Check file exist`, () => {
+    let filePath: string;
+
+    beforeEach(() => {
+      filePath = '/dir/of/file.txt';
+    });
+
+    it(`Should error check file exist`, async () => {
+      const fileError = new Error('File error');
+      (<jest.Mock>fsAsync.access).mockRejectedValue(fileError);
+      let error;
+
+      try {
+        await checkFileExist(filePath);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(fsAsync.access).toHaveBeenCalled();
+      expect(fsAsync.access).toHaveBeenCalledWith(filePath, fs.constants.F_OK | fs.constants.R_OK);
+      expect(error).toBeInstanceOf(Error);
+    });
+
+    it(`Should successfully check file exist and return false if not found file`, async () => {
+      const fileError = new Error('File error');
+      fileError['code'] = 'ENOENT';
+      (<jest.Mock>fsAsync.access).mockRejectedValue(fileError);
+      let error;
+      let result;
+
+      try {
+        result = await checkFileExist(filePath);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(fsAsync.access).toHaveBeenCalled();
+      expect(fsAsync.access).toHaveBeenCalledWith(filePath, fs.constants.F_OK | fs.constants.R_OK);
+      expect(error).toBeUndefined();
+      expect(result).toEqual(false);
+    });
+
+    it(`Should successfully check file exist and return true if found file`, async () => {
+      (<jest.Mock>fsAsync.access).mockResolvedValue(null);
+      let error;
+      let result;
+
+      try {
+        result = await checkFileExist(filePath);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(fsAsync.access).toHaveBeenCalled();
+      expect(fsAsync.access).toHaveBeenCalledWith(filePath, fs.constants.F_OK | fs.constants.R_OK);
+      expect(error).toBeUndefined();
+      expect(result).toEqual(true);
     });
   });
 });

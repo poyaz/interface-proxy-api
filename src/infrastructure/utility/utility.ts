@@ -1,6 +1,7 @@
 import {SortEnum} from '@src-core/model/filter.model';
 import * as fsAsync from 'fs/promises';
 import * as path from 'path';
+import * as fs from 'fs';
 
 export function sortListObject<T>(dataList: Array<T>, sortType: SortEnum, prop: keyof T) {
   const sortTypeNum = sortType === SortEnum.ASC ? 1 : -1;
@@ -26,5 +27,19 @@ export async function* getFiles(dirPath): AsyncGenerator<string> {
     } else {
       yield res;
     }
+  }
+}
+
+export async function checkFileExist(filePath): Promise<boolean> {
+  try {
+    await fsAsync.access(filePath, fs.constants.F_OK | fs.constants.R_OK);
+
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return false;
+    }
+
+    throw error;
   }
 }

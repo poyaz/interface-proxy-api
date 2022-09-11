@@ -1,6 +1,6 @@
 import {SortEnum} from '@src-core/model/filter.model';
-import fsAsync from 'fs/promises';
-import path from 'path';
+import * as fsAsync from 'fs/promises';
+import * as path from 'path';
 
 export function sortListObject<T>(dataList: Array<T>, sortType: SortEnum, prop: keyof T) {
   const sortTypeNum = sortType === SortEnum.ASC ? 1 : -1;
@@ -17,7 +17,7 @@ export function sortListObject<T>(dataList: Array<T>, sortType: SortEnum, prop: 
   });
 }
 
-export async function* getFiles(dirPath) {
+export async function* getFiles(dirPath): AsyncGenerator<string> {
   const dirList = await fsAsync.readdir(dirPath, {withFileTypes: true});
   for (const dir of dirList) {
     const res = path.resolve(dirPath, dir.name);

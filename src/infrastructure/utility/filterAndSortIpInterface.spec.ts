@@ -55,6 +55,11 @@ describe('filterAndSortIpInterface', () => {
     });
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.resetAllMocks();
+  });
+
   it(`Filter and sort ip interface model with name filter`, () => {
     const inputData = [ipInterfaceData1, ipInterfaceData2];
 

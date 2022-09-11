@@ -1,4 +1,4 @@
-import {checkFileExist, getFiles, sortListObject} from '@src-infrastructure/utility/utility';
+import {checkDirOrFileExist, getFiles, sortListObject} from '@src-infrastructure/utility/utility';
 import {SortEnum} from '@src-core/model/filter.model';
 import * as path from 'path';
 import {Dirent} from 'fs';
@@ -145,7 +145,7 @@ describe('utility', () => {
       let error;
 
       try {
-        await checkFileExist(filePath);
+        await checkDirOrFileExist(filePath);
       } catch (e) {
         error = e;
       }
@@ -163,7 +163,7 @@ describe('utility', () => {
       let result;
 
       try {
-        result = await checkFileExist(filePath);
+        result = await checkDirOrFileExist(filePath);
       } catch (e) {
         error = e;
       }
@@ -180,7 +180,7 @@ describe('utility', () => {
       let result;
 
       try {
-        result = await checkFileExist(filePath);
+        result = await checkDirOrFileExist(filePath);
       } catch (e) {
         error = e;
       }

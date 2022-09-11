@@ -30,9 +30,13 @@ export async function* getFiles(dirPath): AsyncGenerator<string> {
   }
 }
 
-export async function checkFileExist(filePath): Promise<boolean> {
+export async function checkDirOrFileExist(path, canWrite: boolean = false): Promise<boolean> {
+  const permission = canWrite
+    ? fs.constants.F_OK | fs.constants.R_OK | fs.constants.W_OK
+    : fs.constants.F_OK | fs.constants.R_OK;
+
   try {
-    await fsAsync.access(filePath, fs.constants.F_OK | fs.constants.R_OK);
+    await fsAsync.access(path, permission);
 
     return true;
   } catch (error) {

@@ -2,6 +2,7 @@ import {SortEnum} from '@src-core/model/filter.model';
 import * as fsAsync from 'fs/promises';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as net from 'net';
 
 export function sortListObject<T>(dataList: Array<T>, sortType: SortEnum, prop: keyof T) {
   const sortTypeNum = sortType === SortEnum.ASC ? 1 : -1;
@@ -46,4 +47,28 @@ export async function checkDirOrFileExist(path, canWrite: boolean = false): Prom
 
     throw error;
   }
+}
+
+export async function checkPortInUse(ip: string, port: number): Promise<boolean> {
+  const server = net.createServer();
+
+  const result = new Promise((resolve, reject) => {
+    server.once('error', (error) => {
+      if (error['code'] === 'EADDRINUSE') {
+        return resolve(true);
+      }
+
+      reject(error);
+    });
+
+    server.once('listening', () => {
+      server.close();
+
+      resolve(false);
+    });
+  });
+
+  server.listen(port, ip);
+
+  return <Promise<boolean>>result;
 }

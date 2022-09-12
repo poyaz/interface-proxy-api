@@ -1,15 +1,22 @@
-import {checkDirOrFileExist, getFiles, sortListObject} from '@src-infrastructure/utility/utility';
+import {checkDirOrFileExist, checkPortInUse, getFiles, sortListObject} from '@src-infrastructure/utility/utility';
 import {SortEnum} from '@src-core/model/filter.model';
 import * as path from 'path';
 import {Dirent} from 'fs';
 import * as fsAsync from 'fs/promises';
 import * as fs from 'fs';
+import * as net from 'net';
 
 jest.mock('fs/promises');
+jest.mock('net');
 
 type sampleTestObject = { id: number, name: string };
 
 describe('utility', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.resetAllMocks();
+  });
+
   describe(`sortListObject`, () => {
     let recordData1: sampleTestObject;
     let recordData2: sampleTestObject;
@@ -189,6 +196,112 @@ describe('utility', () => {
       expect(fsAsync.access).toHaveBeenCalledWith(filePath, fs.constants.F_OK | fs.constants.R_OK);
       expect(error).toBeUndefined();
       expect(result).toEqual(true);
+    });
+  });
+
+  describe(`Check port in use`, () => {
+    let inputIp: string;
+    let inputPort: number;
+    let serverMock: { once: jest.Mock, close: jest.Mock, listen: jest.Mock };
+
+    beforeEach(() => {
+      inputIp = '0.0.0.0';
+      inputPort = 3128;
+
+      serverMock = {
+        once: jest.fn(),
+        close: jest.fn(),
+        listen: jest.fn(),
+      };
+    });
+
+    it(`Should error check port in use when create server`, async () => {
+      const netError = new Error('File error');
+      (<jest.Mock>net.createServer).mockImplementation(() => {
+        throw netError;
+      });
+      let error;
+
+      try {
+        await checkPortInUse(inputIp, inputPort);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(net.createServer).toHaveBeenCalled();
+      expect(error).toBeInstanceOf(Error);
+    });
+
+    it(`Should error check port in use when fail unexpectedly`, async () => {
+      (<jest.Mock>net.createServer).mockReturnValue(serverMock);
+      const netError = new Error('File error');
+      serverMock.once.mockImplementationOnce((listener, callback) => {
+        callback(netError);
+      });
+      let error;
+
+      try {
+        await checkPortInUse(inputIp, inputPort);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(net.createServer).toHaveBeenCalled();
+      expect(serverMock.listen).toHaveBeenCalled();
+      expect(serverMock.listen).toHaveBeenCalledWith(inputPort, inputIp);
+      expect(serverMock.once).toHaveBeenCalledTimes(2);
+      expect(serverMock.close).toHaveBeenCalledTimes(0);
+      expect(error).toBeInstanceOf(Error);
+    });
+
+    it(`Should successfully check port in use and return true if port is using`, async () => {
+      (<jest.Mock>net.createServer).mockReturnValue(serverMock);
+      const netError = new Error('Port using');
+      netError['code'] = 'EADDRINUSE';
+      serverMock.once.mockImplementationOnce((listener, callback) => {
+        callback(netError);
+      });
+      let result;
+      let error;
+
+      try {
+        result = await checkPortInUse(inputIp, inputPort);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(net.createServer).toHaveBeenCalled();
+      expect(serverMock.listen).toHaveBeenCalled();
+      expect(serverMock.listen).toHaveBeenCalledWith(inputPort, inputIp);
+      expect(serverMock.once).toHaveBeenCalledTimes(2);
+      expect(serverMock.close).toHaveBeenCalledTimes(0);
+      expect(error).toBeUndefined();
+      expect(result).toEqual(true);
+    });
+
+    it(`Should successfully check port in use and return false if port is not using`, async () => {
+      (<jest.Mock>net.createServer).mockReturnValue(serverMock);
+      serverMock.once
+        .mockImplementationOnce(() => null)
+        .mockImplementationOnce((listener, callback) => {
+          callback();
+        });
+      let result;
+      let error;
+
+      try {
+        result = await checkPortInUse(inputIp, inputPort);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(net.createServer).toHaveBeenCalled();
+      expect(serverMock.listen).toHaveBeenCalled();
+      expect(serverMock.listen).toHaveBeenCalledWith(inputPort, inputIp);
+      expect(serverMock.once).toHaveBeenCalledTimes(2);
+      expect(serverMock.close).toHaveBeenCalledTimes(1);
+      expect(error).toBeUndefined();
+      expect(result).toEqual(false);
     });
   });
 });

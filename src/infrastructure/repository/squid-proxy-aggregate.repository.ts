@@ -54,7 +54,7 @@ export class SquidProxyAggregateRepository implements IProxyRepositoryInterface 
   }
 
   async create(model: ProxyUpstreamModel): Promise<AsyncReturn<Error, ProxyUpstreamModel>> {
-    return Promise.resolve(undefined);
+    return this._squidProxyRepository.create(model);
   }
 
   async remove(id: string): Promise<AsyncReturn<Error, null>> {

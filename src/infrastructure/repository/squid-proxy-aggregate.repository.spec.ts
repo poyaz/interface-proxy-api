@@ -24,6 +24,7 @@ import {spawn} from 'child_process';
 import * as path from 'path';
 import {RepositoryException} from '@src-core/exception/repository.exception';
 import {PassThrough} from 'stream';
+import {defaultModelFactory} from '@src-core/model/defaultModel';
 
 jest.mock('child_process');
 
@@ -507,6 +508,63 @@ describe('SquidProxyAggregateRepository', () => {
         runner: outputRunnerMatch1,
       });
       expect(count).toEqual(2);
+    });
+  });
+
+  describe(`Create proxy`, () => {
+    let inputModel: ProxyUpstreamModel;
+
+    beforeEach(() => {
+      const downstreamModel = defaultModelFactory(
+        ProxyDownstreamModel,
+        {
+          id: 'default-id',
+          refId: identifierFakeMock.generateId(),
+          ip: '192.168.1.1',
+          mask: 32,
+          type: ProxyTypeEnum.INTERFACE,
+          status: ProxyStatusEnum.DISABLE,
+        },
+        ['id'],
+      );
+      const runner = new RunnerModel({
+        id: identifierFakeMock.generateId(),
+        serial: 'serial',
+        name: 'squid-1',
+        service: RunnerServiceEnum.SQUID,
+        exec: RunnerExecEnum.DOCKER,
+        socketType: RunnerSocketTypeEnum.NONE,
+        volumes: [{source: '/host/path/of/squid-conf-1', dest: '/etc/squid/conf.d/'}],
+        status: RunnerStatusEnum.RUNNING,
+        insertDate: new Date(),
+      });
+      inputModel = defaultModelFactory(
+        ProxyUpstreamModel,
+        {
+          id: 'default-id',
+          listenIp: '0.0.0.0',
+          listenPort: 3128,
+          proxyDownstream: [downstreamModel],
+          runner: runner,
+        },
+        ['id'],
+      );
+    });
+
+    it(`Should error create proxy`, async () => {
+      squidProxyRepository.create.mockResolvedValue([new UnknownException()]);
+
+      const [error] = await repository.create(inputModel);
+
+      expect(error).toBeInstanceOf(UnknownException);
+    });
+
+    it(`Should successfully create proxy`, async () => {
+      squidProxyRepository.create.mockResolvedValue([null, inputModel]);
+
+      const [error] = await repository.create(inputModel);
+
+      expect(error).toBeNull();
     });
   });
 });

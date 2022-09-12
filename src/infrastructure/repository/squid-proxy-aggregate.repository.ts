@@ -58,7 +58,7 @@ export class SquidProxyAggregateRepository implements IProxyRepositoryInterface 
   }
 
   async remove(id: string): Promise<AsyncReturn<Error, null>> {
-    return Promise.resolve(undefined);
+    return this._squidProxyRepository.remove(id);
   }
 
   private async _findFileUpstreamInfo(): Promise<AsyncReturn<Error, Array<string>>> {

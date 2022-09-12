@@ -567,4 +567,28 @@ describe('SquidProxyAggregateRepository', () => {
       expect(error).toBeNull();
     });
   });
+
+  describe(`Remove proxy`, () => {
+    let inputId: string;
+
+    beforeEach(() => {
+      inputId = identifierFakeMock.generateId();
+    });
+
+    it(`Should error remove proxy`, async () => {
+      squidProxyRepository.remove.mockResolvedValue([new UnknownException()]);
+
+      const [error] = await repository.remove(inputId);
+
+      expect(error).toBeInstanceOf(UnknownException);
+    });
+
+    it(`Should successfully remove proxy`, async () => {
+      squidProxyRepository.remove.mockResolvedValue([null]);
+
+      const [error] = await repository.remove(inputId);
+
+      expect(error).toBeNull();
+    });
+  });
 });

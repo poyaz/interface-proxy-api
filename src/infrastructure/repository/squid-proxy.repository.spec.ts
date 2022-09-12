@@ -7,6 +7,7 @@ import {RepositoryException} from '@src-core/exception/repository.exception';
 import {checkDirOrFileExist, checkPortInUse, getFiles} from '@src-infrastructure/utility/utility';
 import * as path from 'path';
 import * as fsAsync from 'fs/promises';
+import {spawn} from 'child_process';
 import {ProxyDownstreamModel, ProxyStatusEnum, ProxyTypeEnum, ProxyUpstreamModel} from '@src-core/model/proxy.model';
 import {FillDataRepositoryException} from '@src-core/exception/fill-data-repository.exception';
 import {InvalidConfigFileException} from '@src-core/exception/invalid-config-file.exception';
@@ -20,6 +21,8 @@ import {
 } from '@src-core/model/runner.model';
 import {ExistException} from '@src-core/exception/exist.exception';
 import {ProviderTokenEnum} from '@src-core/enum/provider-token.enum';
+import {PassThrough} from 'stream';
+import {NotFoundException} from '@src-core/exception/not-found.exception';
 
 jest.mock('child_process');
 jest.mock('fs/promises');
@@ -722,6 +725,190 @@ describe('SquidProxyRepository', () => {
         type: inputModel.proxyDownstream[0].type,
         status: inputModel.proxyDownstream[0].status,
       });
+    });
+  });
+
+  describe(`Remove proxy`, () => {
+    let inputId: string;
+
+    beforeEach(() => {
+      inputId = identifierFakeMock.generateId();
+    });
+
+    it(`Should error remove proxy when execute found upstream id`, async () => {
+      const spawnError = new Error('Spawn error');
+      (<jest.Mock>spawn).mockImplementation(() => {
+        throw spawnError;
+      });
+
+      const [error] = await repository.remove(inputId);
+
+      expect(spawn).toHaveBeenCalled();
+      expect(spawn).toBeCalledWith(
+        'find',
+        expect.arrayContaining([
+          configPath,
+          '-type',
+          'f',
+          '-name',
+          '*.conf',
+          '-exec',
+          'grep',
+          '-E',
+          '-w',
+          `^###\\s+upstream-id:\\s+${inputId}`,
+          '{}',
+          '+',
+        ]),
+      );
+      expect(error).toBeInstanceOf(RepositoryException);
+      expect((<RepositoryException>error).additionalInfo).toEqual(spawnError);
+    });
+
+    it(`Should error remove proxy when error on found upstream id`, async () => {
+      const spawnErrorMsg = 'Spawn stderr error';
+      (<jest.Mock>spawn).mockImplementation(() => {
+        const stderr = new PassThrough();
+        stderr.write(spawnErrorMsg);
+        stderr.end();
+
+        return {stderr};
+      });
+
+      const [error] = await repository.remove(inputId);
+
+      expect(spawn).toHaveBeenCalled();
+      expect(spawn).toBeCalledWith(
+        'find',
+        expect.arrayContaining([
+          configPath,
+          '-type',
+          'f',
+          '-name',
+          '*.conf',
+          '-exec',
+          'grep',
+          '-E',
+          '-w',
+          `^###\\s+upstream-id:\\s+${inputId}`,
+          '{}',
+          '+',
+        ]),
+      );
+      expect(error).toBeInstanceOf(RepositoryException);
+      expect((<RepositoryException>error).additionalInfo).toEqual(new Error(spawnErrorMsg));
+    });
+
+    it(`Should error remove proxy when not found upstream id`, async () => {
+      (<jest.Mock>spawn).mockImplementation(() => {
+        const stderr = new PassThrough();
+        stderr.end();
+        const stdout = new PassThrough();
+        stdout.write('');
+        stdout.end();
+
+        return {stderr, stdout};
+      });
+
+      const [error] = await repository.remove(inputId);
+
+      expect(spawn).toHaveBeenCalled();
+      expect(spawn).toBeCalledWith(
+        'find',
+        expect.arrayContaining([
+          configPath,
+          '-type',
+          'f',
+          '-name',
+          '*.conf',
+          '-exec',
+          'grep',
+          '-E',
+          '-w',
+          `^###\\s+upstream-id:\\s+${inputId}`,
+          '{}',
+          '+',
+        ]),
+      );
+      expect(error).toBeInstanceOf(NotFoundException);
+    });
+
+    it(`Should error remove proxy when delete upstream config`, async () => {
+      (<jest.Mock>spawn).mockImplementation(() => {
+        const stderr = new PassThrough();
+        stderr.end();
+        const stdout = new PassThrough();
+        stdout.write(`${path.join(configPath, 'squid-conf-1/port_3128.conf')}:### upstream-id: ${inputId}`);
+        stdout.write('');
+        stdout.end();
+
+        return {stderr, stdout};
+      });
+      const fileError = new Error('File error');
+      (<jest.Mock>fsAsync.unlink).mockRejectedValue(fileError);
+
+      const [error] = await repository.remove(inputId);
+
+      expect(spawn).toHaveBeenCalled();
+      expect(spawn).toBeCalledWith(
+        'find',
+        expect.arrayContaining([
+          configPath,
+          '-type',
+          'f',
+          '-name',
+          '*.conf',
+          '-exec',
+          'grep',
+          '-E',
+          '-w',
+          `^###\\s+upstream-id:\\s+${inputId}`,
+          '{}',
+          '+',
+        ]),
+      );
+      expect(fsAsync.unlink).toHaveBeenCalled();
+      expect(fsAsync.unlink).toHaveBeenCalledWith(path.join(configPath, 'squid-conf-1/port_3128.conf'));
+      expect(error).toBeInstanceOf(RepositoryException);
+      expect((<RepositoryException>error).additionalInfo).toEqual(fileError);
+    });
+
+    it(`Should successfully remove proxy when delete upstream config`, async () => {
+      (<jest.Mock>spawn).mockImplementation(() => {
+        const stderr = new PassThrough();
+        stderr.end();
+        const stdout = new PassThrough();
+        stdout.write(`${path.join(configPath, 'squid-conf-1/port_3128.conf')}:### upstream-id: ${inputId}`);
+        stdout.write('');
+        stdout.end();
+
+        return {stderr, stdout};
+      });
+      (<jest.Mock>fsAsync.unlink).mockResolvedValue(null);
+
+      const [error] = await repository.remove(inputId);
+
+      expect(spawn).toHaveBeenCalled();
+      expect(spawn).toBeCalledWith(
+        'find',
+        expect.arrayContaining([
+          configPath,
+          '-type',
+          'f',
+          '-name',
+          '*.conf',
+          '-exec',
+          'grep',
+          '-E',
+          '-w',
+          `^###\\s+upstream-id:\\s+${inputId}`,
+          '{}',
+          '+',
+        ]),
+      );
+      expect(fsAsync.unlink).toHaveBeenCalled();
+      expect(fsAsync.unlink).toHaveBeenCalledWith(path.join(configPath, 'squid-conf-1/port_3128.conf'));
+      expect(error).toBeNull();
     });
   });
 });

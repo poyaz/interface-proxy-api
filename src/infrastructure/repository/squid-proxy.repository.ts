@@ -2,7 +2,7 @@ import {IProxyRepositoryInterface} from '@src-core/interface/i-proxy-repository.
 import {FilterModel} from '@src-core/model/filter.model';
 import {ProxyDownstreamModel, ProxyStatusEnum, ProxyTypeEnum, ProxyUpstreamModel} from '@src-core/model/proxy.model';
 import {AsyncReturn, ClassConstructor} from '@src-utility-type';
-import {resolve} from 'path';
+import * as path from 'path';
 import * as fsAsync from 'fs/promises';
 import {checkDirOrFileExist, getFiles} from '@src-infrastructure/utility/utility';
 import {RepositoryException} from '@src-core/exception/repository.exception';
@@ -12,12 +12,14 @@ import {InvalidConfigFileException} from '@src-core/exception/invalid-config-fil
 import {RunnerModel} from '@src-core/model/runner.model';
 import {ExistException} from '@src-core/exception/exist.exception';
 import {IIdentifier} from '@src-core/interface/i-identifier.interface';
+import {spawn} from 'child_process';
+import {NotFoundException} from '@src-core/exception/not-found.exception';
 
 export class SquidProxyRepository implements IProxyRepositoryInterface {
   private readonly _configPath: string;
 
   constructor(configPath: string, private readonly _identifier: IIdentifier) {
-    this._configPath = resolve(configPath);
+    this._configPath = path.resolve(configPath);
   }
 
   async getAllDownstream(filterModel?: FilterModel<ProxyDownstreamModel>): Promise<AsyncReturn<Error, Array<ProxyDownstreamModel>>> {
@@ -86,7 +88,7 @@ export class SquidProxyRepository implements IProxyRepositoryInterface {
       return [new FillDataRepositoryException<RunnerModel>(['volumes'])];
     }
 
-    const configFile = resolve(findConfigVolume.source, `port_${model.listenPort}.conf`);
+    const configFile = path.join(findConfigVolume.source, `port_${model.listenPort}.conf`);
 
     try {
       const checkFileExistData = await checkDirOrFileExist(configFile);
@@ -117,8 +119,55 @@ export class SquidProxyRepository implements IProxyRepositoryInterface {
     }
   }
 
-  remove(id: string): Promise<AsyncReturn<Error, null>> {
-    return Promise.resolve(undefined);
+  async remove(id: string): Promise<AsyncReturn<Error, null>> {
+    try {
+      const exec = spawn(
+        'find',
+        [
+          this._configPath,
+          '-type',
+          'f',
+          '-name',
+          '*.conf',
+          '-exec',
+          'grep',
+          '-E',
+          '-w',
+          `^###\\s+upstream-id:\\s+${id}`,
+          '{}',
+          '+',
+        ],
+      );
+
+      let executeError = '';
+      for await (const chunk of exec.stderr) {
+        executeError += chunk;
+      }
+      if (executeError) {
+        return [new RepositoryException(new Error(executeError))];
+      }
+
+      let executeData = '';
+      for await (const chunk of exec.stdout) {
+        executeData += chunk;
+      }
+
+      const dataList = executeData
+        .split('\n')
+        .filter((v) => v.trim() !== '')
+        .map((v) => (v.match(/^(.+\.conf):###.+/) || [null, null])[1])
+        .filter((v) => v);
+
+      if (dataList.length === 0) {
+        return [new NotFoundException()];
+      }
+
+      await fsAsync.unlink(dataList[0]);
+
+      return [null, null];
+    } catch (error) {
+      return [new RepositoryException(error)];
+    }
   }
 
   private static _validateAndFillProxyModel<T>(cls: ClassConstructor<T>, filePath: string, content: string): T {

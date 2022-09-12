@@ -4,13 +4,22 @@ import {IIdentifier} from '@src-core/interface/i-identifier.interface';
 import {Test, TestingModule} from '@nestjs/testing';
 import {SquidProxyRepository} from './squid-proxy.repository';
 import {RepositoryException} from '@src-core/exception/repository.exception';
-import {getFiles} from '@src-infrastructure/utility/utility';
+import {checkDirOrFileExist, checkPortInUse, getFiles} from '@src-infrastructure/utility/utility';
 import * as path from 'path';
 import * as fsAsync from 'fs/promises';
-import {IpInterfaceModel} from '@src-core/model/ip-interface.model';
 import {ProxyDownstreamModel, ProxyStatusEnum, ProxyTypeEnum, ProxyUpstreamModel} from '@src-core/model/proxy.model';
 import {FillDataRepositoryException} from '@src-core/exception/fill-data-repository.exception';
 import {InvalidConfigFileException} from '@src-core/exception/invalid-config-file.exception';
+import {defaultModelFactory} from '@src-core/model/defaultModel';
+import {
+  RunnerExecEnum,
+  RunnerModel,
+  RunnerServiceEnum,
+  RunnerSocketTypeEnum,
+  RunnerStatusEnum,
+} from '@src-core/model/runner.model';
+import {ExistException} from '@src-core/exception/exist.exception';
+import {ProviderTokenEnum} from '@src-core/enum/provider-token.enum';
 
 jest.mock('child_process');
 jest.mock('fs/promises');
@@ -20,6 +29,7 @@ describe('SquidProxyRepository', () => {
   let repository: SquidProxyRepository;
   let networkInterfaceAggregateRepository: MockProxy<INetworkInterfaceRepositoryInterface>;
   let identifierMock: MockProxy<IIdentifier>;
+  let identifierFakeMock: MockProxy<IIdentifier>;
 
   let configPath: string;
 
@@ -29,19 +39,28 @@ describe('SquidProxyRepository', () => {
     identifierMock = mock<IIdentifier>();
     identifierMock.generateId.mockReturnValue('00000000-0000-0000-0000-000000000000');
 
+    identifierFakeMock = mock<IIdentifier>();
+    identifierFakeMock.generateId.mockReturnValue('11111111-1111-1111-1111-111111111111');
+
     configPath = '/path/of/squid/config';
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         {
+          provide: ProviderTokenEnum.IDENTIFIER_UUID_REPOSITORY,
+          useValue: identifierMock,
+        },
+        {
           provide: SquidProxyRepository,
-          inject: [],
-          useFactory: () => new SquidProxyRepository(configPath),
+          inject: [ProviderTokenEnum.IDENTIFIER_UUID_REPOSITORY],
+          useFactory: (identifierMock) => new SquidProxyRepository(configPath, identifierMock),
         },
       ],
     }).compile();
 
     repository = module.get<SquidProxyRepository>(SquidProxyRepository);
+
+    jest.useFakeTimers().setSystemTime(new Date('2020-01-01'));
   });
 
   afterEach(() => {
@@ -548,6 +567,161 @@ describe('SquidProxyRepository', () => {
       });
       expect(result[2].proxyDownstream.length).toEqual(1);
       expect(count).toEqual(3);
+    });
+  });
+
+  describe(`Create proxy`, () => {
+    let inputModel: ProxyUpstreamModel;
+
+    beforeEach(() => {
+      const downstreamModel = defaultModelFactory(
+        ProxyDownstreamModel,
+        {
+          id: 'default-id',
+          refId: identifierFakeMock.generateId(),
+          ip: '192.168.1.1',
+          mask: 32,
+          type: ProxyTypeEnum.INTERFACE,
+          status: ProxyStatusEnum.DISABLE,
+        },
+        ['id'],
+      );
+      const runner = new RunnerModel({
+        id: identifierFakeMock.generateId(),
+        serial: 'serial',
+        name: 'squid-1',
+        service: RunnerServiceEnum.SQUID,
+        exec: RunnerExecEnum.DOCKER,
+        socketType: RunnerSocketTypeEnum.NONE,
+        volumes: [{source: '/host/path/of/squid-conf-1', dest: '/etc/squid/conf.d/'}],
+        status: RunnerStatusEnum.RUNNING,
+        insertDate: new Date(),
+      });
+      inputModel = defaultModelFactory(
+        ProxyUpstreamModel,
+        {
+          id: 'default-id',
+          listenIp: '0.0.0.0',
+          listenPort: 3128,
+          proxyDownstream: [downstreamModel],
+          runner: runner,
+        },
+        ['id'],
+      );
+    });
+
+    it(`Should error create proxy when runner not exist`, async () => {
+      delete inputModel.runner;
+
+      const [error] = await repository.create(inputModel);
+
+      expect(error).toBeInstanceOf(FillDataRepositoryException);
+      expect((<FillDataRepositoryException<ProxyUpstreamModel>>error).fillProperties.length).toEqual(1);
+      expect((<FillDataRepositoryException<ProxyUpstreamModel>>error).fillProperties).toEqual(expect.arrayContaining<keyof ProxyUpstreamModel>(['runner']));
+    });
+
+    it(`Should error create proxy when runner volume not exist`, async () => {
+      inputModel.runner.volumes[0].dest = '/another/path/';
+
+      const [error] = await repository.create(inputModel);
+
+      expect(error).toBeInstanceOf(FillDataRepositoryException);
+      expect((<FillDataRepositoryException<RunnerModel>>error).fillProperties.length).toEqual(1);
+      expect((<FillDataRepositoryException<RunnerModel>>error).fillProperties).toEqual(expect.arrayContaining<keyof RunnerModel>(['volumes']));
+    });
+
+    it(`Should error create proxy when fail on checking config path exist`, async () => {
+      const fileError = new Error('File error');
+      (<jest.Mock>checkDirOrFileExist).mockRejectedValue(fileError);
+
+      const [error] = await repository.create(inputModel);
+
+      expect(checkDirOrFileExist).toHaveBeenCalled();
+      expect(checkDirOrFileExist).toHaveBeenCalledWith(path.resolve(inputModel.runner.volumes[0].source, `port_${inputModel.listenPort}.conf`));
+      expect(error).toBeInstanceOf(RepositoryException);
+      expect((<RepositoryException>error).additionalInfo).toEqual(fileError);
+    });
+
+    it(`Should error create proxy when config file exist`, async () => {
+      (<jest.Mock>checkDirOrFileExist).mockResolvedValue(true);
+
+      const [error] = await repository.create(inputModel);
+
+      expect(checkDirOrFileExist).toHaveBeenCalled();
+      expect(checkDirOrFileExist).toHaveBeenCalledWith(path.resolve(inputModel.runner.volumes[0].source, `port_${inputModel.listenPort}.conf`));
+      expect(error).toBeInstanceOf(ExistException);
+      expect((<ExistException<RunnerModel>>error).existProperties.length).toEqual(1);
+      expect((<ExistException<RunnerModel>>error).existProperties).toEqual(expect.arrayContaining<keyof RunnerModel>(['volumes']));
+    });
+
+    it(`Should error create proxy when create and write config file`, async () => {
+      (<jest.Mock>checkDirOrFileExist).mockResolvedValue(false);
+      const fileError = new Error('File error');
+      (<jest.Mock>fsAsync.writeFile).mockRejectedValue(fileError);
+
+      const [error] = await repository.create(inputModel);
+
+      expect(checkDirOrFileExist).toHaveBeenCalled();
+      expect(checkDirOrFileExist).toHaveBeenCalledWith(path.resolve(inputModel.runner.volumes[0].source, `port_${inputModel.listenPort}.conf`));
+      expect(identifierMock.generateId).toHaveBeenCalledTimes(2);
+      expect(fsAsync.writeFile).toHaveBeenCalled();
+      expect(fsAsync.writeFile).toHaveBeenCalledWith(
+        path.resolve(inputModel.runner.volumes[0].source, `port_${inputModel.listenPort}.conf`),
+        [
+          `### upstream-id: ${identifierMock.generateId()}`,
+          `http_port ${inputModel.listenIp}:${inputModel.listenPort} name=port${inputModel.listenPort}`,
+          '',
+          `acl out${inputModel.listenPort} myportname port${inputModel.listenPort}`,
+          '',
+          `### downstream-id: ${identifierMock.generateId()}`,
+          `### ref-id: ${identifierFakeMock.generateId()}`,
+          `tcp_outgoing_address ${inputModel.proxyDownstream[0].ip} out${inputModel.listenPort}`,
+        ].join('\n'),
+        expect.objectContaining({encoding: 'utf-8', flag: 'w'}),
+      );
+      expect(error).toBeInstanceOf(RepositoryException);
+      expect((<RepositoryException>error).additionalInfo).toEqual(fileError);
+    });
+
+    it(`Should successfully create proxy`, async () => {
+      (<jest.Mock>checkDirOrFileExist).mockResolvedValue(false);
+      (<jest.Mock>fsAsync.writeFile).mockResolvedValue(null);
+
+      const [error, result] = await repository.create(inputModel);
+
+      expect(checkDirOrFileExist).toHaveBeenCalled();
+      expect(checkDirOrFileExist).toHaveBeenCalledWith(path.resolve(inputModel.runner.volumes[0].source, `port_${inputModel.listenPort}.conf`));
+      expect(identifierMock.generateId).toHaveBeenCalledTimes(2);
+      expect(fsAsync.writeFile).toHaveBeenCalled();
+      expect(fsAsync.writeFile).toHaveBeenCalledWith(
+        path.resolve(inputModel.runner.volumes[0].source, `port_${inputModel.listenPort}.conf`),
+        [
+          `### upstream-id: ${identifierMock.generateId()}`,
+          `http_port ${inputModel.listenIp}:${inputModel.listenPort} name=port${inputModel.listenPort}`,
+          '',
+          `acl out${inputModel.listenPort} myportname port${inputModel.listenPort}`,
+          '',
+          `### downstream-id: ${identifierMock.generateId()}`,
+          `### ref-id: ${identifierFakeMock.generateId()}`,
+          `tcp_outgoing_address ${inputModel.proxyDownstream[0].ip} out${inputModel.listenPort}`,
+        ].join('\n'),
+        expect.objectContaining({encoding: 'utf-8', flag: 'w'}),
+      );
+      expect(error).toBeNull();
+      expect(result).toMatchObject<Omit<ProxyUpstreamModel, 'clone' | 'proxyDownstream'>>({
+        id: identifierMock.generateId(),
+        listenIp: inputModel.listenIp,
+        listenPort: inputModel.listenPort,
+        runner: inputModel.runner,
+      });
+      expect(result.proxyDownstream[0]).toMatchObject<Omit<ProxyDownstreamModel, 'clone'>>({
+        id: identifierMock.generateId(),
+        refId: inputModel.proxyDownstream[0].refId,
+        ip: inputModel.proxyDownstream[0].ip,
+        mask: inputModel.proxyDownstream[0].mask,
+        type: inputModel.proxyDownstream[0].type,
+        status: inputModel.proxyDownstream[0].status,
+      });
     });
   });
 });

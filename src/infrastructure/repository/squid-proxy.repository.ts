@@ -4,16 +4,19 @@ import {ProxyDownstreamModel, ProxyStatusEnum, ProxyTypeEnum, ProxyUpstreamModel
 import {AsyncReturn, ClassConstructor} from '@src-utility-type';
 import {resolve} from 'path';
 import * as fsAsync from 'fs/promises';
-import {getFiles} from '@src-infrastructure/utility/utility';
+import {checkDirOrFileExist, getFiles} from '@src-infrastructure/utility/utility';
 import {RepositoryException} from '@src-core/exception/repository.exception';
 import {DefaultModel, defaultModelFactory} from '@src-core/model/defaultModel';
 import {FillDataRepositoryException} from '@src-core/exception/fill-data-repository.exception';
 import {InvalidConfigFileException} from '@src-core/exception/invalid-config-file.exception';
+import {RunnerModel} from '@src-core/model/runner.model';
+import {ExistException} from '@src-core/exception/exist.exception';
+import {IIdentifier} from '@src-core/interface/i-identifier.interface';
 
 export class SquidProxyRepository implements IProxyRepositoryInterface {
   private readonly _configPath: string;
 
-  constructor(configPath: string) {
+  constructor(configPath: string, private readonly _identifier: IIdentifier) {
     this._configPath = resolve(configPath);
   }
 
@@ -73,8 +76,45 @@ export class SquidProxyRepository implements IProxyRepositoryInterface {
     }
   }
 
-  create(model: ProxyUpstreamModel): Promise<AsyncReturn<Error, ProxyUpstreamModel>> {
-    return Promise.resolve(undefined);
+  async create(model: ProxyUpstreamModel): Promise<AsyncReturn<Error, ProxyUpstreamModel>> {
+    if (!(<keyof ProxyUpstreamModel>'runner' in model)) {
+      return [new FillDataRepositoryException<ProxyUpstreamModel>(['runner'])];
+    }
+
+    const findConfigVolume = model.runner.volumes.find((v) => v.dest === '/etc/squid/conf.d/' || v.dest === '/etc/squid/conf.d');
+    if (!findConfigVolume) {
+      return [new FillDataRepositoryException<RunnerModel>(['volumes'])];
+    }
+
+    const configFile = resolve(findConfigVolume.source, `port_${model.listenPort}.conf`);
+
+    try {
+      const checkFileExistData = await checkDirOrFileExist(configFile);
+      if (checkFileExistData) {
+        return [new ExistException<RunnerModel>(['volumes'])];
+      }
+
+      const outputModel = model.clone();
+      outputModel.id = this._identifier.generateId();
+      outputModel.proxyDownstream[0].id = this._identifier.generateId();
+
+      const configFileData = [
+        `### upstream-id: ${outputModel.id}`,
+        `http_port ${outputModel.listenIp}:${outputModel.listenPort} name=port${outputModel.listenPort}`,
+        '',
+        `acl out${outputModel.listenPort} myportname port${outputModel.listenPort}`,
+        '',
+        `### downstream-id: ${outputModel.proxyDownstream[0].id}`,
+        `### ref-id: ${outputModel.proxyDownstream[0].refId}`,
+        `tcp_outgoing_address ${outputModel.proxyDownstream[0].ip} out${outputModel.listenPort}`,
+      ];
+
+      await fsAsync.writeFile(configFile, configFileData.join('\n'), {encoding: 'utf-8', flag: 'w'});
+
+      return [null, outputModel];
+    } catch (error) {
+      return [new RepositoryException(error)];
+    }
   }
 
   remove(id: string): Promise<AsyncReturn<Error, null>> {
